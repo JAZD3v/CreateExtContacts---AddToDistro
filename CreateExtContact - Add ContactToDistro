@@ -3,13 +3,14 @@
 Write-host “PLEASE ENSURE THERE IS A FOLDER NAMED 'CSV_Imports' CREATED ON THE DESKTOP OF YOUR ONEDRIVE WITH A CSV FILE NAMED '1 - CreateContactAddToDistro_FromCsv_V1.2.csv' BEFORE RUNNING THIS. IF YOU HAVEN’T AL
 READY CREATED IT PRESS 'Ctrl C' TO CANCEL AND CREATED IT” -backgroundColor Red
 
-$ComputerName=Read-host "Type NUMBER PORTION of your COMPUTER NAME"
-$UserName=Read-host "Type Your USER NAME"
+# This is info for the file path. Need will vary so you can change/comment these out as desired 
+$ComputerName=Read-host "Type NUMBER PORTION of your COMPUTER NAME" #Computer name user is running the command on
+$UserName=Read-host "Type Your USER NAME" #Users User Name. This will be added to the folder path
 
 # If you have a prefix for all your computer names in your domain, you can add that to the string before your $ComputerName.
-# You are free to change the file path to what ever fits your organization.  
-$Items= Import-Csv "\\hqhq-uw-$ComputerName\c$\Users\$UserName\OneDrive - Federal Bureau of Investigation\Desktop\CSV_Imports\1 - CreateContactAddToDistro_FromCsv_V1.2.csv"
-$Distro=$Items[0].DistroName
+# You are free to change the file path to what ever fits your organization. 
+$Items= Import-Csv "\\PreFix-$ComputerName\c$\Users\$UserName\SomeFolderPath\Desktop\CSV_Imports\1 - CreateContactAddToDistro_FromCsv_V1.2.csv"
+$Distro=$Items[0].DistroName # Pulls the First item from the "DistroName" column
 $Item=Get-DistributionGroup $Distro
 
 # The $OU variable below is from the Distribution group.
@@ -17,25 +18,19 @@ $Item=Get-DistributionGroup $Distro
 # This command parses out the Group from the DistinguishedName property of the Distribution group and replaces it with "CONTACTS".
 $OU=(($Item.DistinguishedName).remove(0,(($Item.DistinguishedName).IndexOf(",")+1))).replace("GROUPS","CONTACTS")
 
-<#
-****************************************************************************************************
-**  For Field Offices: $OU=OU=xxHQ,OU=CONTACTS,OU=Users And Groups,OU=UNET,DC=FBI,DC=GOV"         **
-**  For Headquaters: $OU=OU=DIVxx,OU=HQHQ,OU=CONTACTS,OU=Users And Groups,OU=UNET,DC=FBI,DC=GOV   **
-**                                                                                                **
-**          ENSURE TO REPLACE THE "xx" with the infor for the OU the requester is in              **
-****************************************************************************************************
-#>
-
-Import-Csv "\\hqhq-uw-$ComputerName\c$\Users\$UserName\OneDrive - Federal Bureau of Investigation\Desktop\CSV_Imports\1 - CreateContactAddToDistro_FromCsv_V1.2.csv"  | foreach {
+# Imports data from the CSV file for 1.) Creating the External Contact in Active Directory 2.) Adding External Contact(s) to listed Distro.
+Import-Csv "\\PreFix-$ComputerName\c$\Users\$UserName\SomeFolderPath\Desktop\CSV_Imports\1 - CreateContactAddToDistro_FromCsv_V1.2.csv"  | ForEach-Object {
 new-mailcontact -ExternalEmailAddress "SMTP:$($_.Email)" -DisplayName $($($_.LastName)+", "+$($_.FirstName)) -LastName $($_.LastName) -Name $($_.LastName), $($_.FirstName) -firstName $($_.FirstName) -Alias $((($($_.FirstName)+"."+$($_.LastName))).replace(" ","-")) -OrganizationalUnit $OU | out-null
 write-host "Contact $($_.Email) created:" -BackgroundColor DarkGreen
 Add-DistributionGroupMember -identity $Distro -Member $_.Email -BypassSecurityGroupManagerCheck
 Start-Sleep -Seconds 2
-Get-MailContact $($_.Email) | fl DisplayName,ExternalEmailAddress,Identity,alias
+Get-MailContact $($_.Email) | Format-List DisplayName,ExternalEmailAddress,Identity,alias
 }
 
-Import-Csv "\\hqhq-uw-$ComputerName\c$\Users\$UserName\OneDrive - Federal Bureau of Investigation\Desktop\CSV_Imports\1 - CreateContactAddToDistro_FromCsv_V1.2.csv" | foreach {
+# This verifies the External Contact was created and added to the Distribution Group.
+# This prints the output to the console but can be changed to output to a text file with the Out-File command.
+Import-Csv "\\PreFix-$ComputerName\c$\Users\$UserName\OneDrive - Federal Bureau of Investigation\Desktop\CSV_Imports\1 - CreateContactAddToDistro_FromCsv_V1.2.csv" | ForEach-Object {
 $Contact=$_.Email
 write-host "Contact $($Contact) added to Distro:" -BackgroundColor DarkGreen
-Get-DistributionGroupMember $Distro | ?{$_.PrimarySmtpAddress -eq $($Contact)} | fl Alias,PrimarySmtpAddress,@{n="DistroGroup";e={$Distro}}
+Get-DistributionGroupMember $Distro | Where-Object {$_.PrimarySmtpAddress -eq $($Contact)} | Format-List Alias,PrimarySmtpAddress,@{n="DistroGroup";e={$Distro}}
 }
